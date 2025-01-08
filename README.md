@@ -69,12 +69,38 @@ Group Analyzer lists group memberships for following services:
 <!-- to check: -->
 <!-- https://graph.microsoft.com/v1.0/policies/adminConsentRequestPolicy -->
 
+## Setup Script: Create-AppRegistration.ps1
+
+The `Create-AppRegistration.ps1` script, located in the `setup` folder, automates the creation of the required Azure AD application registration for this tool. Here's what the script does:
+
+1. Checks and installs required PowerShell modules (`Microsoft.Graph.Applications` and `Microsoft.Graph.Authentication`)
+2. Creates a new app registration named "Microsoft Cloud Group Analyzer"
+3. Configures necessary Microsoft Graph and Azure Service Management permissions
+4. Creates a service principal and assigns required permissions
+5. Generates a client secret valid for one year
+
+The script requires admin privileges to run and will prompt for confirmation if an existing app registration with the same name is found.
+
+Required permissions include:
+- Microsoft Graph: Directory.Read.All, Policy.Read.All, DeviceManagement permissions, and more
+- Azure Service Management: User impersonation
+
 ## Installation and usage
 
 <a href="./assets/mcga-1.png" target="_blank"><img src="./assets/mcga-1.png" width="60%" /></a> <br>
 <a href="./assets/mcga-2.png" target="_blank"><img src="./assets/mcga-2.png" width="60%" /></a> <br>
 <a href="./assets/mcga-3.png" target="_blank"><img src="./assets/mcga-3.png" width="60%" /></a> <br>
 
+## Optional: setup script for App Registration
+
+The `Create-AppRegistration.ps1` script, located in the `setup` folder, automates the creation of the required Entra ID application registration for this tool. Here's what the script does:
+
+1. Checks and installs required PowerShell modules (`Microsoft.Graph.Applications` and `Microsoft.Graph.Authentication`)
+2. Creates a new app registration named "Microsoft Cloud Group Analyzer"
+3. Creates a service principal and assigns required permissions
+4. Generates a client secret valid for one year and updates the .env file
+
+The script requires admin privileges to run and will prompt for confirmation if an existing app registration with the same name is found.
 
 ```sh
 git clone https://github.com/jasperbaes/Microsoft-Cloud-Group-Analyzer.git
