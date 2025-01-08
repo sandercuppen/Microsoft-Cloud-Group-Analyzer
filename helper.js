@@ -197,6 +197,41 @@ async function exportCSV(arr, filename) { // export array to CSV file in current
 async function generateWebReport(arr) { // generates and opens a web report
     debugLogger(`Generating web report...`)
 
+    // Define headers for each service type
+    const serviceHeaders = {
+        'Azure Resource': {
+            identity: 'Group',
+            resource: 'Scope',
+            details: 'Role'
+        },
+        'Entra Group': {
+            identity: 'Group',
+            resource: 'Parent Group',
+            details: 'Details'
+        },
+        'Microsoft 365 Team': {
+            identity: 'Group',
+            resource: 'Team',
+            details: 'Type'
+        },
+        'Intune App Configuration Policy': {
+            identity: 'Group',
+            resource: 'Policy',
+            details: 'Details'
+        },
+        'Entra ID Conditional Access Policy': {
+            identity: 'Group',
+            resource: 'Policy',
+            details: 'State'
+        },
+        // Add more service-specific headers as needed
+        'default': {
+            identity: 'Group',
+            resource: 'Resource',
+            details: 'Details'
+        }
+    }
+
     // if --cli-only is specified, stop function
     if (scriptParameters.some(param => ['--cli-only', '-cli-only', '--clionly', '-clionly'].includes(param.toLowerCase()))) {
         debugLogger(`Detected the '--cli-only' parameter`)
@@ -220,6 +255,29 @@ async function generateWebReport(arr) { // generates and opens a web report
               <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
               <link rel="stylesheet" href="style.css">
               <title>Microsoft Cloud Group Analyzer</title>
+              <style>
+                .list-header {
+                    font-weight: bold;
+                    color: #666;
+                    padding: 10px 0;
+                    border-bottom: 2px solid #eee;
+                    margin-bottom: 10px;
+                }
+                .details-cell {
+                    color: #666;
+                }
+                .group-name {
+                    color: #666;
+                    font-weight: normal;
+                }
+                .list-group-item .row {
+                    margin: 0;
+                    width: 100%;
+                }
+                .list-group-item .col-4 {
+                    padding: 0 15px;
+                }
+              </style>
             </head>
             <body>
               <div class="container mt-4 mb-5">
@@ -236,10 +294,11 @@ async function generateWebReport(arr) { // generates and opens a web report
 
         htmlContent += `<div style="display: flex; justify-content: center"> <ul>`
 
-        // list groups in scope
+        // list groups in scope (already sorted in index.js)
         debugLogger(`Looping over each group in scope`)
         global.groupsInScope.forEach(group => {
-            htmlContent += `<li>${group.groupName}</li>`;
+            const sourceType = group.isOnPrem ? 'AD' : 'Cloud'
+            htmlContent += `<li>${group.groupName} <span class="badge bg-secondary">${sourceType}</span></li>`;
         })
         
         htmlContent += '</ul></div> <p></p>';
@@ -264,21 +323,36 @@ async function generateWebReport(arr) { // generates and opens a web report
                     htmlContent += '</ul></div>';
                 }
                 
+                // Get the headers for this service
+                const headers = serviceHeaders[item.service] || serviceHeaders.default;
+                
                 htmlContent += `
                     <div class="box mt-4 p-4">
                     <h3 class="mt-1"><span class="badge fs-2 font-bold color-accent px-2 py-2">${item.service}</span> <span class="fs-5 font-bold color-secondary">assignments:</span></h3>
-                    <ul class="list-group list-group-flush ms-3 color-secondary">`;
+                    <ul class="list-group list-group-flush ms-3 color-secondary">
+                    <li class="list-group-item list-header">
+                        <div class="row">
+                            <div class="col-4">${headers.identity}</div>
+                            <div class="col-4">${headers.resource}</div>
+                            <div class="col-4">${headers.details}</div>
+                        </div>
+                    </li>`;
                 
                 printedServices.add(item.service);
             }
+
+            // Format the details based on the service type
+            let details = item.details;
+            if (item.service === 'Azure Resource') {
+                details = item.details.replace('Role: ', ''); // Remove the 'Role: ' prefix for cleaner display
+            }
         
             htmlContent += `
-                <li class="list-group-item d-flex justify-content-between align-items-start color-secondary">
-                    
-                <div class="row align-items-center w-100">
-                        <div class="col font-bold"> ${(item.groupName.includes('@')) ? 'user' : 'group'}: <span class="badge-blue font-bold color-primary px-2 py-0">${item.groupName}</span></div>
-                        <div class="col font-bold">${item.name}</div>
-                        <div class="col-3 text-end">${item.details}</div>
+                <li class="list-group-item">
+                    <div class="row">
+                        <div class="col-4"><span class="badge-blue font-bold color-primary px-2 py-0">${item.groupName}</span></div>
+                        <div class="col-4">${item.name}</div>
+                        <div class="col-4 details-cell">${details}</div>
                     </div>
                 </li>`;
         });
