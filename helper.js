@@ -166,12 +166,13 @@ async function callApi(endpoint, accessToken) {
         }
         return response.data;
     } catch (error) {
-        if (error.response.status == 403) {
+        if (error.response && error.response.status == 403) {
             debugLogger(`403 error`, error.response?.data, error)
             global.forbiddenErrors.push(`${error?.response?.status} ${error?.response?.statusText} for '${error?.response?.config?.url}'`)
             // process.exit()
+        } else {
+            debugLogger(`ERROR: ${endpoint} ${error}`)
         }
-        debugLogger(`ERROR: ${endpoint} ${error}`)
     }
 };
 
