@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microsoft Cloud Group Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Microsoft Cloud Group Analyzer</h1>
+        
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Authentication Status</h5>
+                <div id="authStatus" class="alert alert-info">
+                    Checking authentication...
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Analysis Controls</h5>
+                <div class="mb-3">
+                    <label for="groupId" class="form-label">Group ID (optional)</label>
+                    <input type="text" class="form-control" id="groupId" placeholder="Enter group ID or leave empty for all groups">
+                </div>
+                <button id="startAnalysis" class="btn btn-primary me-2" disabled>Start Analysis</button>
+                <button id="exportCSV" class="btn btn-secondary me-2" disabled>Export to CSV</button>
+                <button id="exportJSON" class="btn btn-secondary" disabled>Export to JSON</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Results</h5>
+                <div id="results" class="results-container">
+                    <div class="text-muted">No analysis results yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/frontend.js"></script>
+</body>
+</html>

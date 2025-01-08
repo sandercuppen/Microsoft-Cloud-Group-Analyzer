@@ -16,9 +16,8 @@ global.currentVersion = '2024.50'
 
 // Declare libaries
 require('dotenv').config();
-var fs = require('fs');
-const readline = require('readline');
 const helper = require('./helper');
+const readline = require('readline');
 const path = require('path');
 
 // Scope declaration. Change property 'enabled' to false to put service out of scope for the scan
@@ -354,6 +353,38 @@ async function calculateMemberships(accessToken, accessTokenAzure, groupIDarray,
     helper.generateWebReport(array)
 }
 
+async function analyzeGroups(accessToken) {
+    let groups = [];
+    try {
+        // Get all groups
+        let response = await helper.getAllWithNextLink(accessToken, 'https://graph.microsoft.com/v1.0/groups?$select=id,displayName,description,groupTypes,membershipRule,resourceProvisioningOptions,securityEnabled,visibility,mailEnabled,mailNickname,membershipRuleProcessingState');
+        groups = response;
+        
+        // For each group, get members and owners count
+        for (let group of groups) {
+            let members = await helper.getAllWithNextLink(accessToken, `https://graph.microsoft.com/v1.0/groups/${group.id}/members?$select=id`);
+            let owners = await helper.getAllWithNextLink(accessToken, `https://graph.microsoft.com/v1.0/groups/${group.id}/owners?$select=id`);
+            
+            group.memberCount = members ? members.length : 0;
+            group.ownerCount = owners ? owners.length : 0;
+            
+            // Add any potential issues
+            group.issues = [];
+            if (group.ownerCount === 0) {
+                group.issues.push('No owners assigned');
+            }
+            if (group.memberCount === 0) {
+                group.issues.push('No members in group');
+            }
+        }
+        
+        return groups;
+    } catch (error) {
+        console.error('Error analyzing groups:', error);
+        throw error;
+    }
+}
+
 async function formatOutput(arr) {
     // this set is used to track which services are already printed
     let printedServices = new Set();
@@ -387,4 +418,44 @@ async function formatOutput(arr) {
     }
 }
 
-module.exports = { }
+// Only run CLI if this file is being run directly
+if (require.main === module) {
+    (async () => {
+        try {
+            console.log('\nMicrosoft Cloud Group Analyzer');
+            console.log('----------------------------');
+            
+            // Get token
+            let token = await helper.getToken();
+            
+            // Analyze groups
+            console.log('\nAnalyzing groups...');
+            const groups = await analyzeGroups(token.accessToken);
+            
+            // Ask user for export format
+            const rl = readline.createInterface({
+                input: process.stdin,
+                output: process.stdout
+            });
+            
+            rl.question('\nExport format (json/csv): ', async (format) => {
+                format = format.toLowerCase();
+                if (format === 'json') {
+                    await helper.exportJSON(groups, 'group-analysis.json');
+                    console.log('Results exported to group-analysis.json');
+                } else if (format === 'csv') {
+                    await helper.exportCSV(groups, 'group-analysis.csv');
+                    console.log('Results exported to group-analysis.csv');
+                } else {
+                    console.log('Invalid format. Please specify either json or csv.');
+                }
+                rl.close();
+            });
+        } catch (error) {
+            console.error('Error:', error);
+            process.exit(1);
+        }
+    })();
+}
+
+module.exports = { analyzeGroups };

@@ -1,0 +1,51 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.container {
+    max-width: 1200px;
+}
+
+.card {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.results-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.group-item {
+    border-left: 4px solid #007bff;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background-color: #fff;
+    border-radius: 4px;
+}
+
+.group-item h6 {
+    color: #007bff;
+    margin-bottom: 0.5rem;
+}
+
+.status-success {
+    color: #28a745;
+}
+
+.status-error {
+    color: #dc3545;
+}
+
+.status-warning {
+    color: #ffc107;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+}
+
+.alert {
+    border-radius: 4px;
+    margin-bottom: 0;
+}
