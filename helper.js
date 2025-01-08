@@ -1,4 +1,3 @@
-const index = require('./index');
 const axios = require('axios');
 const msal = require('@azure/msal-node');
 const NodeCache = require( "node-cache" );
