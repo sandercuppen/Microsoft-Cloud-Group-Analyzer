@@ -139,39 +139,102 @@ async function handleInput(accessToken, accessTokenAzure, groupID, tenantID) {
     helper.debugLogger(`Fetching the user ID and UPN...`)
     let isUser = await helper.callApi(`https://graph.microsoft.com/v1.0/users/${groupID[0]?.id}?$select=id,userPrincipalName`, accessToken)
     if (isUser != undefined) {
-        helper.debugLogger(`Fetching the groups of this user...`)
-        let groups = await helper.getAllWithNextLink(accessToken, `/v1.0/users/${groupID[0]?.id}/memberOf?$select=id,displayName`)
-        groupID = groups.map(group => ({ id: group.id, displayName: group.displayName }))        
+        helper.debugLogger(`Fetching the groups of this user (including transitive memberships)...`)
+        let groups = await helper.getAllWithNextLink(accessToken, `/v1.0/users/${groupID[0]?.id}/transitiveMemberOf?$select=id,displayName,onPremisesSyncEnabled,securityEnabled,mailEnabled`)
+        groupID = groups
+            .filter(group => group['@odata.type'] === '#microsoft.graph.group')
+            .map(group => ({ 
+                id: group.id, 
+                displayName: group.displayName,
+                isOnPrem: group.onPremisesSyncEnabled || false,
+                groupType: group.securityEnabled ? (group.mailEnabled ? 'Mail-enabled security' : 'Security') : (group.mailEnabled ? 'Distribution' : 'Other')
+            }))        
     }
 
     // if user input is the word 'all', then add all Entra groups to scope of scan
     if (groupID[0]?.id == 'all') {
         helper.debugLogger(`Fetching all groups...`)
-        let groups = await helper.getAllWithNextLink(accessToken, `/v1.0/groups?$select=id,displayname`)
-        groupID = groups.map(group => ({ id: group.id, displayName: group.displayName }))
+        // Fetch all groups with expanded memberOf to get parent groups in one call
+        let groups = await helper.getAllWithNextLink(accessToken, `/v1.0/groups?$select=id,displayName,onPremisesSyncEnabled,securityEnabled,mailEnabled&$expand=memberOf($select=id,displayName,onPremisesSyncEnabled,securityEnabled,mailEnabled)`)
+        
+        // Create a map for quick group lookups
+        const groupMap = new Map()
+        groups.forEach(group => {
+            groupMap.set(group.id, {
+                id: group.id,
+                displayName: group.displayName,
+                isOnPrem: group.onPremisesSyncEnabled || false,
+                groupType: group.securityEnabled ? (group.mailEnabled ? 'Mail-enabled security' : 'Security') : (group.mailEnabled ? 'Distribution' : 'Other'),
+                parentGroups: group.memberOf?.filter(m => m['@odata.type'] === '#microsoft.graph.group') || []
+            })
+        })
+        
+        groupID = Array.from(groupMap.values())
     }
 
     console.log(`\n Entra Groups in scope of this scan:`)
+    global.groupsInScope = [] // Reset the scope
 
-    // Loop over all groupIDs in scope of the scan
+    // Process all groups and their parent groups at once
+    const processedGroups = new Set()
+    
     for (let group of groupID) {
-        helper.debugLogger(`Fetching group ID and group name...`)
-        
-        // add group to scope
-        console.log(` - '${group.displayName}'`)
-        helper.debugLogger(`Adding group to scope...`)
-        global.groupsInScope.push({ groupID: group.id, groupName: group.displayName})
+        if (!processedGroups.has(group.id)) {
+            processedGroups.add(group.id)
+            const sourceType = group.isOnPrem ? '(AD Synced)' : '(Cloud)'
+            const groupType = group.groupType ? ` - ${group.groupType}` : ''
+            global.groupsInScope.push({ 
+                groupID: group.id, 
+                groupName: group.displayName,
+                isOnPrem: group.isOnPrem,
+                groupType: group.groupType,
+                sourceType: sourceType,
+                displayString: ` - '${group.displayName}' ${fgColor.FgGray}${sourceType}${groupType}${colorReset}`
+            })
 
-        // also add subgroups to scope of this scan
-        let memberOfOtherGroups = await require(`./service/groups`).init(accessToken, group.id, tenantID)
-        memberOfOtherGroups.forEach(parentGroup => console.log(` - '${parentGroup.name}' ${fgColor.FgGray}(parent of '${group.displayName}')${colorReset}`))
-        global.groupsInScope.push(...memberOfOtherGroups.map(x => ({ groupID: x.resourceID, groupName: x.name}) ))
-        
+            // Add parent groups if they exist (for 'all' query)
+            if (group.parentGroups) {
+                group.parentGroups.forEach(parentGroup => {
+                    if (!processedGroups.has(parentGroup.id)) {
+                        processedGroups.add(parentGroup.id)
+                        const parentSourceType = parentGroup.onPremisesSyncEnabled ? '(AD Synced)' : '(Cloud)'
+                        global.groupsInScope.push({ 
+                            groupID: parentGroup.id, 
+                            groupName: parentGroup.displayName,
+                            isOnPrem: parentGroup.onPremisesSyncEnabled || false,
+                            groupType: parentGroup.groupType,
+                            sourceType: parentSourceType,
+                            displayString: ` - '${parentGroup.displayName}' ${fgColor.FgGray}(parent of '${group.displayName}')${colorReset}`
+                        })
+                    }
+                })
+            }
+            // For single group queries, fetch parent groups separately
+            else if (groupID[0]?.id !== 'all') {
+                const memberOfOtherGroups = await require('./service/groups').init(accessToken, group.id, tenantID)
+                if (memberOfOtherGroups) {
+                    memberOfOtherGroups.forEach(parentGroup => {
+                        if (!processedGroups.has(parentGroup.resourceID)) {
+                            processedGroups.add(parentGroup.resourceID)
+                            const parentSourceType = parentGroup.isOnPrem ? '(AD Synced)' : '(Cloud)'
+                            global.groupsInScope.push({ 
+                                groupID: parentGroup.resourceID, 
+                                groupName: parentGroup.name,
+                                isOnPrem: parentGroup.isOnPrem,
+                                groupType: parentGroup.groupType,
+                                sourceType: parentSourceType,
+                                displayString: ` - '${parentGroup.name}' ${fgColor.FgGray}(parent of '${group.displayName}')${colorReset}`
+                            })
+                        }
+                    })
+                }
+            }
+        }
+
         // limit parameter
         const limitIndex = scriptParameters.findIndex(param => ['-l', '--limit'].includes(param.toLowerCase()));
         if (limitIndex !== -1 && limitIndex + 1 < scriptParameters.length) {
             const limitValue = scriptParameters[limitIndex + 1];
-
             if (global.groupsInScope.length >= limitValue) {
                 helper.debugLogger(`Limiting scope to first ${limitValue} groups...`)
                 global.groupsInScope = global.groupsInScope.slice(0, limitValue)
@@ -181,14 +244,6 @@ async function handleInput(accessToken, accessTokenAzure, groupID, tenantID) {
         }
     }
     
-    // if input was a user ID, then also add that userID. This is required for the service 'azureResource'
-    if (isUser != undefined) {
-        helper.debugLogger(`Adding user ID to the scope (used for Azure resources)`)
-        global.groupsInScope.push({ groupID: isUser.id, groupName: isUser.userPrincipalName})
-    }
-
-    console.log(` [${fgColor.FgGreen}✓${colorReset}] ${global.groupsInScope.length} Entra group(s) in scope`)
-
     // skip parameter
     const skipIndex = scriptParameters.findIndex(param => ['-s', '--skip'].includes(param.toLowerCase()));
     if (skipIndex !== -1 && skipIndex + 1 < scriptParameters.length) {
@@ -198,6 +253,13 @@ async function handleInput(accessToken, accessTokenAzure, groupID, tenantID) {
         console.log(` [${fgColor.FgGreen}✓${colorReset}] Skipping scope with ${skipValue} group(s)`);
     }
 
+    // Sort and display groups
+    global.groupsInScope.sort((a, b) => a.groupName.localeCompare(b.groupName))
+    global.groupsInScope.forEach(group => {
+        console.log(group.displayString)
+    })
+
+    console.log(` [${fgColor.FgGreen}✓${colorReset}] ${global.groupsInScope.length} Entra group(s) in scope`)
     console.log(` [${fgColor.FgGray}i${colorReset}] Calculating Entra group assignments...`)
     calculateMemberships(accessToken, accessTokenAzure, global.groupsInScope, tenantID)
 }
@@ -205,42 +267,61 @@ async function handleInput(accessToken, accessTokenAzure, groupID, tenantID) {
 async function calculateMemberships(accessToken, accessTokenAzure, groupIDarray, tenantID) {
     let array = [];
 
-// Function to log progress
-const logProgress = (index, total) => {
-    const progress = ((index + 1) / total) * 100;
-    process.stdout.clearLine();
-    process.stdout.cursorTo(0);
-    process.stdout.write(` [${fgColor.FgGray}i${colorReset}] Progress: ${progress.toFixed(2)}% (${total - (index + 1)} group(s) remaining)`);
-};
+    // Function to log progress
+    const logProgress = (index, total) => {
+        const progress = ((index + 1) / total) * 100;
+        process.stdout.clearLine();
+        process.stdout.cursorTo(0);
+        process.stdout.write(` [${fgColor.FgGray}i${colorReset}] Progress: ${progress.toFixed(2)}% (${total - (index + 1)} group(s) remaining)`);
+    };
 
-// Process groups in batches
-const processGroupsInBatches = async (groupIDarray, scope, accessToken, accessTokenAzure, tenantID, batchSize = 10) => {
-    for (let i = 0; i < groupIDarray.length; i += batchSize) {
-        const batch = groupIDarray.slice(i, i + batchSize);
-        const promises = batch.map(async (group, index) => {
-            const servicePromises = scope.map(async (item) => {
-                if (item.enabled) {
-                    const serviceResult = await require(`./service/${item.file}`).init(accessToken, accessTokenAzure, group.groupID, group.groupName, tenantID);
-                    if (Array.isArray(serviceResult)) {
-                        array.push(...serviceResult);
+    // Process groups in batches
+    const processGroupsInBatches = async (groupIDarray, scope, accessToken, accessTokenAzure, tenantID, batchSize = 100) => {
+        // Create a map to cache service results
+        const serviceCache = new Map();
+        
+        for (let i = 0; i < groupIDarray.length; i += batchSize) {
+            const batch = groupIDarray.slice(i, i + batchSize);
+            const promises = batch.map(async (group, index) => {
+                const servicePromises = scope.map(async (item) => {
+                    if (item.enabled) {
+                        // Create a cache key
+                        const cacheKey = `${item.file}-${group.groupID}`;
+                        
+                        // Check cache first
+                        if (serviceCache.has(cacheKey)) {
+                            const cachedResult = serviceCache.get(cacheKey);
+                            if (Array.isArray(cachedResult)) {
+                                array.push(...cachedResult);
+                            }
+                            return;
+                        }
+                        
+                        const serviceResult = await require(`./service/${item.file}`).init(accessToken, accessTokenAzure, group.groupID, group.groupName, group.isOnPrem, group.groupType, tenantID);
+                        
+                        // Cache the result
+                        serviceCache.set(cacheKey, serviceResult);
+                        
+                        if (Array.isArray(serviceResult)) {
+                            array.push(...serviceResult);
+                        }
                     }
+                });
+
+                // Wait for all services to complete for the current group
+                await Promise.all(servicePromises);
+
+                // Log progress at regular intervals
+                if ((i + index) % 10 === 0 || (i + index) === groupIDarray.length - 1) {
+                    logProgress(i + index, groupIDarray.length);
                 }
             });
 
-            // Wait for all services to complete for the current group
-            await Promise.all(servicePromises);
+            // Wait for the current batch to be processed
+            await Promise.all(promises);
+        }
 
-            // Log progress at regular intervals
-            if ((i + index) % 10 === 0 || (i + index) === groupIDarray.length - 1) {
-                logProgress(i + index, groupIDarray.length);
-            }
-        });
-
-        // Wait for the current batch to be processed
-        await Promise.all(promises);
-    }
-
-    console.log(`\n [${fgColor.FgGreen}✓${colorReset}] Scan completed`);
+        console.log(`\n [${fgColor.FgGreen}✓${colorReset}] Scan completed`);
     };
 
     // Example usage
