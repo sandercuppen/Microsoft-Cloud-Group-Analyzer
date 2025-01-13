@@ -281,7 +281,6 @@ async function generateWebReport(arr) { // generates and opens a web report
             </head>
             <body>
               <div class="container mt-4 mb-5">
-                <p class="text-center"><a class="text-decoration-none" href="https://github.com/jasperbaes/Microsoft-Cloud-Group-Analyzer" target="_blank"><img src="logo.png" alt="Logo" height="160"></a><p>
                 <h1 class="mb-0 text-center font-bold color-primary">Microsoft Cloud <span class="font-bold color-accent px-2 py-0">Group Analyzer</span></h1>
                 <p class="text-center mt-3 mb-5 font-bold color-secondary">Track where your Entra Groups are used! 💪</p>
         `
@@ -365,8 +364,7 @@ async function generateWebReport(arr) { // generates and opens a web report
         htmlContent += 
                 `</ul>
               </div>
-              <p class="text-center mt-5 mb-0"><a class="color-primary font-bold text-decoration-none" href="https://github.com/jasperbaes/Microsoft-Cloud-Group-Analyzer" target="_blank">Microsoft Cloud Group Analyzer</a>, made by <a class="color-accent font-bold text-decoration-none" href="https://www.linkedin.com/posts/jasper-baes_entraid-azure-activity-7157748584753319936-cqFX" target="_blank">Jasper Baes</a></p>
-              <p class="text-center mt-1 mb-5"><a class="color-secondary" href="https://github.com/jasperbaes/Microsoft-Cloud-Group-Analyzer" target="_blank">https://github.com/jasperbaes/Microsoft-Cloud-Group-Analyzer</a></p>
+            <!-- Add footer -->
             </body>
           </html>`;
         res.send(htmlContent);
