@@ -5,7 +5,7 @@
 Name: Microsoft Cloud Group Analyzer
 Description: 
 Author: Jasper Baes (https://www.linkedin.com/in/jasper-baes/)
-Company: /
+Company: / Personal
 Published: January, 2023 
 Dependencies: axios, msal-node, fs, readline, node-cache, json-2-csv
 ======================================================================
